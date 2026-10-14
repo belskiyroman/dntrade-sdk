@@ -1,0 +1,49 @@
+{
+  "name": "dntrade-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SDK і MCP-сервер для внутрішнього API DNTrade (модуль navkolo.торгівля)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "dntrade": "dist/cli.js",
+    "dntrade-mcp": "dist/mcp/server.js"
+  },
+  "files": [
+    "dist",
+    "openapi",
+    "README.md"
+  ],
+  "scripts": {
+    "generate": "node scripts/generate.mjs",
+    "build": "npm run generate && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "cli": "tsx src/cli.ts",
+    "mcp": "tsx src/mcp/server.ts",
+    "smoke": "tsx test/smoke.ts",
+    "mcp-check": "tsx test/mcp-check.ts",
+    "auto-login-check": "tsx test/auto-login-check.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "openapi-fetch": "^0.13.5",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "js-yaml": "^4.1.0",
+    "openapi-typescript": "^7.6.1",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3"
+  }
+}

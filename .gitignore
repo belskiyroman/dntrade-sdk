@@ -1,0 +1,4 @@
+node_modules/
+dist/
+.dntrade-session.json
+.env
