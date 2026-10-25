@@ -1,8 +1,9 @@
 /**
  * Файли, прикріплені до документів і записів довідників (/docfiles/*).
  * Файл прив'язується до пари (docType, docId): docType — код розділу (для документів товарообліку дорівнює типу
- * документа: 18 замовлення клієнта, 17 замовлення постачальнику, 3 видаткова накладна ...; довідники: 1001 контрагенти,
- * 1000 товари тощо — див. DOC_FILE_TYPES). Обмеження сервера: до 10 МБ на файл.
+ * документа: 18 замовлення клієнта, 17 замовлення постачальнику, 3 видаткова накладна ...; записи: 1001 контрагенти,
+ * 1014 співробітники, 1000 товари; 100 авансовий звіт — див. DOC_FILE_TYPES). Інші розділи (касові ордери, платежі,
+ * склади ...) сервер не підтримує: 404. Обмеження сервера: до 10 МБ на файл.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -12,7 +13,7 @@ import docFileTypesJson from "../generated/doc-file-types.json" with { type: "js
 
 export const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-/** Коди docType для файлів (DOCUMENT_TYPE розділу інтерфейсу), згенеровано зі специфікації (info.x-doc-file-types). */
+/** Коди docType, для яких сервер підтримує файли (перевірено запитом списку), зі специфікації (info.x-doc-file-types). */
 export const DOC_FILE_TYPES: Record<number, string> = Object.fromEntries(Object.entries(docFileTypesJson as Record<string, string>).map(([k, v]) => [Number(k), v]));
 /** Типи замовлень: 18 замовлення клієнта, 17 замовлення у постачальника, 201 замовлення на виробництво. */
 export const ORDER_TYPES = { client: 18, supplier: 17, production: 201 } as const;
@@ -63,12 +64,21 @@ async function toBlobPart(input: FileInput): Promise<{ name: string; blob: Blob 
 export interface UploadResult { uploaded: DocFile[]; messageSuccess?: string; messageError?: string; raw: StatusResponse }
 export interface DownloadResult { id: string; fileName: string; contentType: string | null; size: number; data: Buffer }
 
+/** 404 від /docfiles/* означає, що для цього docType сервер файли не підтримує. */
+function unsupportedType(docType: number, e: unknown): never {
+  if (e instanceof DntradeError && e.status === 404) {
+    const list = Object.entries(DOC_FILE_TYPES).map(([k, v]) => `${k} ${v}`).join("; ");
+    throw new DntradeError(`Файли не підтримуються для docType ${docType}${DOC_FILE_TYPES[docType] ? ` (${DOC_FILE_TYPES[docType]})` : ""}: сервер відповідає 404. Підтримувані: ${list}`, 404, e.body);
+  }
+  throw e;
+}
+
 export class DocFiles {
   constructor(private readonly client: DntradeClient) {}
 
   /** Список файлів запису: id, title, size, date, user, preview. */
   async list(docType: number, docId: number | string): Promise<DocFile[]> {
-    const resp = await this.client.get<StatusResponse & { data?: DocFile[] }>("/docfiles/getlist", { doc_id: docId, doc_type: docType });
+    const resp = await this.client.get<StatusResponse & { data?: DocFile[] }>("/docfiles/getlist", { doc_id: docId, doc_type: docType }).catch((e: unknown) => unsupportedType(docType, e));
     expectSuccess(resp, `files.list ${docType}/${docId}`);
     return Array.isArray(resp.data) ? resp.data : [];
   }
@@ -84,7 +94,7 @@ export class DocFiles {
     for (const p of parts) form.append("files[]", p.blob, p.name);
     form.append("doc_id", String(docId));
     form.append("doc_type", String(docType));
-    const resp = await this.client.session.request<StatusResponse & { message_success?: string; message_error?: string }>("POST", "/docfiles/upload", { body: form, contentType: "multipart" });
+    const resp = await this.client.session.request<StatusResponse & { message_success?: string; message_error?: string }>("POST", "/docfiles/upload", { body: form, contentType: "multipart" }).catch((e: unknown) => unsupportedType(docType, e));
     expectSuccess({ ...resp, message_error: undefined } as StatusResponse, "files.upload");
     const after = await this.list(docType, docId);
     const uploaded = after.filter((f) => !before.has(String(f.id)));

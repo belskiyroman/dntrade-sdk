@@ -18,6 +18,8 @@ const server = http.createServer(async (req, res) => {
   if (req.headers.token !== "test-token") return json({ message: "Unauthorized" }, 401);
   const form = async () => new Request("http://x", { method: "POST", headers: { "content-type": req.headers["content-type"] || "" }, body: raw }).formData();
   const urlencoded = () => new URLSearchParams(raw.toString("utf8"));
+  const docTypeParam = url.searchParams.get("doc_type");
+  if (url.pathname === "/docfiles/getlist" && docTypeParam && ["21", "41", "1008"].includes(docTypeParam)) { res.writeHead(404, { "Content-Type": "text/html" }); return res.end("Not Found (#404): The requested page does not exist"); }
   switch (url.pathname) {
     case "/invoices/update": return json({ status: "success", data: { id: Number(url.searchParams.get("id")), type: 18 }, products: [] });
     case "/docfiles/getlist": {

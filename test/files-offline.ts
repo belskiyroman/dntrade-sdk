@@ -76,7 +76,11 @@ try {
   delete process.env.DNTRADE_FILES_ROOT;
   console.log("ok DNTRADE_FILES_ROOT: шляхи поза текою відхилено");
 
-  // 7) недійсний Token без автологіну -> DntradeAuthError
+  // 7) непідтримуваний docType -> зрозуміла помилка зі списком підтримуваних
+  await assert.rejects(dn.files.list(1008, 1), (e: unknown) => e instanceof DntradeError && /не підтримуються для docType 1008/.test((e as Error).message) && /18 Замовлення клієнта/.test((e as Error).message));
+  console.log("ok непідтримуваний docType: зрозуміла помилка");
+
+  // 8) недійсний Token без автологіну -> DntradeAuthError
   const bad = new Dntrade(new DntradeSession({ api_base: `http://127.0.0.1:${port}`, token: "wrong", tenant_url: "http://tenant" }, { file: null, relogin: false }));
   await assert.rejects(bad.files.list(18, 41), (e: unknown) => (e as Error).name === "DntradeAuthError");
   console.log("ok недійсний Token: DntradeAuthError");

@@ -71,11 +71,15 @@ try {
   // картка контрагента (1001) і універсальний виклик
   const upPartner = await step("files.upload (контрагент 1001)", () => dn.files.upload(1001, partner.id, [{ name: "договір.txt", data: "договір", encoding: "utf8" }]));
   assert.equal(upPartner.uploaded.length, 1);
+  const upProduct = await step("files.upload (товар 1000)", () => dn.files.upload(1000, product.id, [{ name: "фото товару.png", data: png.toString("base64"), encoding: "base64" }]));
+  assert.equal(upProduct.uploaded.length, 1);
+  await assert.rejects(dn.files.list(21, 1), /не підтримуються для docType 21/);
+  console.log("ok  непідтримуваний docType 21 (касовий ордер): зрозуміла помилка");
   const viaCall = await step("call(docfilesGetlist)", () => dn.call<{ status: string; data: unknown[] }>("docfilesGetlist", { query: { doc_id: partner.id, doc_type: 1001 } }).then((r) => ({ status: r.status, files: r.data.length })));
   assert.equal(viaCall.files, 1);
 
   // прибрати файли до видалення записів
-  for (const [t, id] of [[ORDER_TYPES.client, order.id], [ORDER_TYPES.supplier, supplierOrder.id], [1001, partner.id]] as const)
+  for (const [t, id] of [[ORDER_TYPES.client, order.id], [ORDER_TYPES.supplier, supplierOrder.id], [1001, partner.id], [1000, product.id]] as const)
     for (const f of await dn.files.list(t, id)) await dn.files.delete(f.id);
   console.log("ok  файли тестових записів видалено");
   console.log("ALL OK");

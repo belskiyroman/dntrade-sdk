@@ -41,7 +41,7 @@ const server = new McpServer({ name: "dntrade", version: "0.1.0" }, { instructio
   "Видалення двокрокове: markDeleted (можна скасувати) і deletePermanent (незворотно). Перед створенням документа знайдіть контрагента (dntrade_search_partners) і товари (dntrade_search_products).",
   "Для операцій без окремого інструменту: dntrade_find_operations -> dntrade_call(operationId).",
   "Параметри акаунта (організація, склад, каса, рахунок, типи цін, валюта, користувач) визначаються автоматично або з DNTRADE_*: dntrade_defaults показує поточні значення.",
-  "Файли (до 10 МБ) прикріплюються до документів (замовлення клієнта 18, замовлення постачальнику 17, накладні тощо) і записів довідників: dntrade_upload_files / dntrade_list_files / dntrade_download_file / dntrade_delete_file; для документів товарообліку docType можна не вказувати.",
+  "Файли (до 10 МБ) прикріплюються до документів товарообліку (замовлення клієнта 18, замовлення постачальнику 17, накладні тощо), контрагентів, співробітників, товарів і авансових звітів: dntrade_upload_files / dntrade_list_files / dntrade_download_file / dntrade_delete_file; для документів товарообліку docType можна не вказувати.",
 ].join(" ") });
 
 const idSchema = z.union([z.number(), z.string()]).describe("id документа/запису");
@@ -117,8 +117,8 @@ server.tool("dntrade_report", "Звіт за період: sell, balance, gross_
 }, async (a) => run(() => api().reports.run(a.kind as keyof typeof REPORT_KINDS, a)));
 
 // ---- файли документів
-const docTypeSchema = z.number().int().optional().describe("код розділу: тип документа (18 замовлення клієнта, 17 замовлення постачальнику, 3 видаткова ...), 1001 контрагент, 1000 товар, 21/22 касові ордери, 41/42 платежі (dntrade_file_doc_types). Для документів товарообліку можна не вказувати — визначиться за id");
-server.tool("dntrade_file_doc_types", "Коди docType для файлів (розділ -> код).", {}, async () => text(DOC_FILE_TYPES));
+const docTypeSchema = z.number().int().optional().describe("код розділу: тип документа товарообліку (18 замовлення клієнта, 17 замовлення постачальнику, 3 видаткова ...), 1001 контрагент, 1014 співробітник, 1000 товар, 100 авансовий звіт (повний перелік: dntrade_file_doc_types; касові ордери, платежі, склади файли не підтримують). Для документів товарообліку можна не вказувати — визначиться за id");
+server.tool("dntrade_file_doc_types", "Коди docType, для яких сервер підтримує файли (код -> розділ).", {}, async () => text(DOC_FILE_TYPES));
 server.tool("dntrade_list_files", "Файли, прикріплені до документа/запису: id, title, size, date, user.", { docId: idSchema, docType: docTypeSchema },
   async (a) => run(async () => { const t = await api().files.resolveType(a.docId, a.docType); return { docType: t, docId: a.docId, files: await api().files.list(t, a.docId) }; }));
 server.tool("dntrade_upload_files", `Прикріпити файли (до ${MAX_FILE_SIZE / 1048576} МБ кожен) до документа/запису, напр. до замовлення клієнта. Кожен файл: path (локальний шлях) або name + contentBase64 або name + text.`, {
