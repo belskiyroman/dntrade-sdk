@@ -16,6 +16,9 @@ import { findOperations, getOperation } from "../client.js";
 import { DOCUMENT_TYPES } from "../resources/invoices.js";
 import { REFERENCE_KINDS } from "../resources/references.js";
 import { REPORT_KINDS } from "../resources/reports.js";
+import { DOC_FILE_TYPES, MAX_FILE_SIZE, type FileInput } from "../resources/files.js";
+import os from "node:os";
+import path from "node:path";
 
 let dn: Dntrade | null = null;
 let discovering: Promise<unknown> | null = null;
@@ -38,6 +41,7 @@ const server = new McpServer({ name: "dntrade", version: "0.1.0" }, { instructio
   "Видалення двокрокове: markDeleted (можна скасувати) і deletePermanent (незворотно). Перед створенням документа знайдіть контрагента (dntrade_search_partners) і товари (dntrade_search_products).",
   "Для операцій без окремого інструменту: dntrade_find_operations -> dntrade_call(operationId).",
   "Параметри акаунта (організація, склад, каса, рахунок, типи цін, валюта, користувач) визначаються автоматично або з DNTRADE_*: dntrade_defaults показує поточні значення.",
+  "Файли (до 10 МБ) прикріплюються до документів (замовлення клієнта 18, замовлення постачальнику 17, накладні тощо) і записів довідників: dntrade_upload_files / dntrade_list_files / dntrade_download_file / dntrade_delete_file; для документів товарообліку docType можна не вказувати.",
 ].join(" ") });
 
 const idSchema = z.union([z.number(), z.string()]).describe("id документа/запису");
@@ -111,6 +115,57 @@ server.tool("dntrade_delete_payment", "Відмітити платіж на ви
 server.tool("dntrade_report", "Звіт за період: sell, balance, gross_profit, profit_and_loss, cashflow, cash, partners, payments, costs, oldest, relize, structural_unit.", {
   kind: z.enum(Object.keys(REPORT_KINDS) as [string, ...string[]]), dateFrom: z.string().optional().describe("DD-MM-YYYY"), dateTo: z.string().optional().describe("DD-MM-YYYY"), search: z.record(z.unknown()).optional(),
 }, async (a) => run(() => api().reports.run(a.kind as keyof typeof REPORT_KINDS, a)));
+
+// ---- файли документів
+const docTypeSchema = z.number().int().optional().describe("код розділу: тип документа (18 замовлення клієнта, 17 замовлення постачальнику, 3 видаткова ...), 1001 контрагент, 1000 товар, 21/22 касові ордери, 41/42 платежі (dntrade_file_doc_types). Для документів товарообліку можна не вказувати — визначиться за id");
+server.tool("dntrade_file_doc_types", "Коди docType для файлів (розділ -> код).", {}, async () => text(DOC_FILE_TYPES));
+server.tool("dntrade_list_files", "Файли, прикріплені до документа/запису: id, title, size, date, user.", { docId: idSchema, docType: docTypeSchema },
+  async (a) => run(async () => { const t = await api().files.resolveType(a.docId, a.docType); return { docType: t, docId: a.docId, files: await api().files.list(t, a.docId) }; }));
+server.tool("dntrade_upload_files", `Прикріпити файли (до ${MAX_FILE_SIZE / 1048576} МБ кожен) до документа/запису, напр. до замовлення клієнта. Кожен файл: path (локальний шлях) або name + contentBase64 або name + text.`, {
+  docId: idSchema, docType: docTypeSchema,
+  files: z.array(z.object({
+    path: z.string().optional().describe("абсолютний шлях до локального файлу"), name: z.string().optional().describe("ім'я файлу (обов'язкове для contentBase64/text)"),
+    contentBase64: z.string().optional().describe("вміст у base64"), text: z.string().optional().describe("текстовий вміст (UTF-8)"), contentType: z.string().optional(),
+  })).min(1),
+}, async (a) => run(async () => {
+  const inputs: FileInput[] = a.files.map((f, i) => {
+    if (f.path) return { path: f.path, name: f.name, contentType: f.contentType };
+    if (!f.name) throw new DntradeError(`files[${i}]: потрібне name для contentBase64/text`);
+    if (f.contentBase64 !== undefined) return { name: f.name, data: f.contentBase64, encoding: "base64" as const, contentType: f.contentType };
+    if (f.text !== undefined) return { name: f.name, data: f.text, encoding: "utf8" as const, contentType: f.contentType };
+    throw new DntradeError(`files[${i}]: задайте path, contentBase64 або text`);
+  });
+  const t = await api().files.resolveType(a.docId, a.docType);
+  const r = await api().files.upload(t, a.docId, inputs);
+  return { docType: t, docId: a.docId, uploaded: r.uploaded, messageSuccess: r.messageSuccess, messageError: r.messageError };
+}));
+server.tool("dntrade_download_file", "Завантажити файл за id (UUID з dntrade_list_files): зберігає на диск (saveTo — шлях або тека; типово DNTRADE_FILES_ROOT або тимчасова тека) і повертає шлях. Передайте docId (і docType, якщо це не документ товарообліку), щоб зберегти з оригінальним ім'ям. inline=true — додатково повернути вміст (текст, зображення або base64, до 2 МБ).", {
+  fileId: z.string().describe("id файлу (UUID)"), docId: idSchema.optional().describe("запис, до якого прикріплено файл (для оригінального імені)"), docType: docTypeSchema,
+  fileName: z.string().optional().describe("ім'я для збереження, якщо docId невідомий"), saveTo: z.string().optional(), inline: z.boolean().optional(),
+}, async (a) => {
+  try {
+    await ready();
+    const dir = process.env.DNTRADE_FILES_ROOT || path.join(os.tmpdir(), "dntrade-files");
+    const target = a.saveTo || dir + path.sep;
+    let file: string | { id: string; title: string } = a.fileId;
+    if (a.docId !== undefined && !a.fileName) {
+      const t = await api().files.resolveType(a.docId, a.docType);
+      const found = await api().files.find(t, a.docId, a.fileId);
+      if (found) file = found;
+    }
+    const f = await api().files.downloadTo(file, target, { fileName: a.fileName });
+    const meta = { fileId: f.id, fileName: f.fileName, contentType: f.contentType, size: f.size, path: f.path };
+    const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [{ type: "text", text: JSON.stringify(meta, null, 1) }];
+    if (a.inline && f.size <= 2 * 1024 * 1024) {
+      const ct = (f.contentType || "").split(";")[0].trim();
+      if (/^image\/(png|jpeg|gif|webp)$/.test(ct)) content.push({ type: "image", data: f.data.toString("base64"), mimeType: ct });
+      else if (/^text\/|json|xml|csv/.test(ct)) content.push({ type: "text", text: f.data.toString("utf8") });
+      else content.push({ type: "text", text: `base64:${f.data.toString("base64")}` });
+    }
+    return { content };
+  } catch (e) { return fail(e); }
+});
+server.tool("dntrade_delete_file", "Видалити прикріплений файл за id (UUID, незворотно).", { fileId: z.string().describe("id файлу (UUID)") }, async (a) => run(() => api().files.delete(a.fileId)));
 
 // ---- універсальні
 server.tool("dntrade_find_operations", "Знайти операції API за словами (operationId, шлях, назва). '+' означає підтверджену живим викликом операцію.", { query: z.string(), verifiedOnly: z.boolean().optional(), limit: z.number().int().optional() },

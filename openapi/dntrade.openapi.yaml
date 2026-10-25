@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: 'DNTrade (navkolo.торгівля): API фронтенду'
-  version: 6.1.4-2026-10-14
+  version: 6.1.4-2026-10-25
   summary: >-
     Недокументований HTTP API https://app1.dntrade.com.ua, яким користується веб-інтерфейс DNTrade; відновлено з коду фронтенду і
     підтверджено живими викликами для ядра.
@@ -26,13 +26,82 @@ info:
     **Документи.** Ендпоїнти `/invoices/*` спільні для всіх типів документів товарообліку; вид документа задає поле `type`
     (3 — видаткова накладна, 2 — прибуткова, 1 — рахунок, 18 — замовлення клієнта тощо; перелік у `x-document-types`).
     Відповіді DNTrade часто містять числа у вигляді рядків (`"72.50"`), такі поля позначені `x-numeric-string`.
-  x-generated-at: '2026-10-14T20:07:47.214Z'
+  x-generated-at: '2026-10-25T18:29:06.622Z'
   x-auth-flow:
     - POST https://my.navkolo.one/api/v1/login {login,password} -> token (JWT), refresh_token
     - 'GET https://my.navkolo.one/api/v1/dn-trade/get-success-registration (Authorization: Bearer <token>) -> {link}'
     - GET <link> (cookie-сесія тенанта https://<tenant>.dntrade.com.ua)
     - 'GET https://<tenant>.dntrade.com.ua/invoices/out?iframe=1 -> у HTML: baseUrl:''https://app1.dntrade.com.ua'' і "Token":"..."'
     - 'Усі запити до app1: заголовок Token: <...>; новий SSO-вхід анулює попередній Token'
+  x-doc-file-types:
+    '1': Рахунок на оплату
+    '2': Прибуткова накладна
+    '3': Видаткова накладна
+    '4': Оприбуткування товарів
+    '5': Переміщення товарів
+    '6': Продаж по чеку
+    '7': Повернення товару
+    '8': Списання товарів
+    '9': Продаж товару в рахунок зарплати
+    '10': Інвентаризація товарів
+    '11': Повернення від співробітника
+    '12': Повернення товарів постачальнику
+    '13': Оприбуткування товарів з виробництва
+    '14': Вилучення товарів зі складу
+    '15': Розфасовка товарів з виробництва
+    '16': Звіт виробничої зміни
+    '17': Замовлення у постачальника
+    '18': Замовлення клієнта
+    '20': Внесення готівки в касу
+    '21': Прибутковий касовий ордер
+    '22': Видатковий касовий ордер
+    '23': Списання готівки
+    '24': Переміщення по касам
+    '25': Зняття готівки із рахунку
+    '26': Видача готівки під авансовий звіт
+    '27': Прихід готівки від співробітника
+    '28': Вилучення готівки
+    '29': Інші витрати
+    '30': Виплата авансу співробітнику
+    '31': Виплата зарплати співробітнику
+    '33': Інші доходи
+    '40': Внесення безготівки
+    '41': Платіжне доручення вхідне
+    '42': Платіжне доручення вихідне
+    '43': Обмін між рахунками
+    '44': Внесення готівки на рахунок
+    '45': Списання безготівки
+    '46': Вилучення безготівки
+    '47': Виплата зарплати на картку
+    '100': Авансовий звіт
+    '201': Замовлення на виробництво
+    '301': Нарахування зарплати
+    '700': Коригування заборгованості контрагентів
+    '701': Коригування заборгованості співробітників
+    '800': Калькуляції
+    '900': Табель обліку робочого часу
+    '930': Автоматичне табелювання
+    '1000': Товари
+    '1001': Контрагенти
+    '1002': Підрозділи організацій
+    '1003': Каси
+    '1004': Типи цін
+    '1005': Доставка товару
+    '1006': Види витрат
+    '1007': Банки
+    '1008': Склади
+    '1010': Платіжні термінали
+    '1011': Валюти
+    '1013': Одиниці виміру
+    '1014': Співробітники організації
+    '1015': Структурний елемент
+    '1016': Організації
+    '1017': POS Принтери
+    '1018': ПРРО Касири
+    '1020': Ваги
+    '1021': Виносні ідентифікатори (Дисплей)
+    '1022': Види доходів
+    '1050': Завдання
   x-form-encoding:
     style: php-nested
     rules:
@@ -91,6 +160,9 @@ tags:
   - name: delivery
     x-displayName: Доставка
     description: Доставка
+  - name: docfiles
+    x-displayName: Файли документів
+    description: Файли документів
   - name: invoices
     x-displayName: Документи товарообліку (усі типи накладних; type визначає вид)
     description: Документи товарообліку (усі типи накладних; type визначає вид)
@@ -13869,6 +13941,602 @@ paths:
                   message: {}
         default:
           description: 'Помилка або відмова: status=error з title/message; 401/403 при недійсному Token'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusEnvelope'
+  /docfiles/delete:
+    post:
+      operationId: docfilesDelete
+      tags:
+        - docfiles
+      summary: 'Файли документа або запису: видалити'
+      description: Видаляє прикріплений файл (незворотно).
+      x-verified: true
+      x-static-confidence: literal
+      x-ui-sections:
+        - banks_index
+        - calculation_index
+        - cashboxorder_avans
+        - cashboxorder_correct
+        - cashboxorder_costsout
+        - cashboxorder_fromemployee
+        - cashboxorder_in
+        - cashboxorder_instart
+        - cashboxorder_move
+        - cashboxorder_othercosts
+        - cashboxorder_otherprofit
+        - cashboxorder_out
+        - cashboxorder_paymentexchange
+        - cashboxorder_salary
+        - cashboxorder_toemployee
+        - checkboxes_index
+        - clientdisplays_index
+        - correctpartner_employees
+        - correctpartner_index
+        - costs_index
+        - costsdoc_index
+        - currency_index
+        - delivery_index
+        - integrations_index
+        - invoices_back
+        - invoices_backfromemployee
+        - invoices_backfromprovider
+        - invoices_cash
+        - invoices_cashpanel
+        - invoices_coming
+        - invoices_correct
+        - invoices_employees
+        - invoices_in
+        - invoices_inventarization
+        - invoices_move
+        - invoices_onlineorder
+        - invoices_order
+        - invoices_out
+        - invoices_production
+        - invoices_productionorder
+        - invoices_shift
+        - invoices_start
+        - invoices_unpack
+        - invoices_writeoff
+        - logs_index
+        - organizations_index
+        - partners_employees
+        - partners_index
+        - payments_correct
+        - payments_costs
+        - payments_import
+        - payments_in
+        - payments_move
+        - payments_out
+        - payments_paymentexchange
+        - payments_salary
+        - payments_start
+        - prices_index
+        - printers_index
+        - printforms_index
+        - products_correctprice
+        - products_index
+        - profitlist_index
+        - promotionals_index
+        - prrocashier_index
+        - reports_cashbox
+        - reports_cashflow
+        - reports_costs
+        - reports_employees
+        - reports_grossprofit
+        - reports_oldest
+        - reports_orders
+        - reports_partners
+        - reports_payments
+        - reports_profitandloss
+        - reports_relize
+        - reports_sell
+        - reports_storebalance
+        - reports_structuralunit
+        - reports_zreport
+        - salary_index
+        - scheduler_index
+        - schedulerauto_index
+        - stores_index
+        - structuralunit_index
+        - subdivision_index
+        - tasks_index
+        - terminals_index
+        - units_index
+        - user_index
+        - weight_index
+      x-frontend-methods:
+        - deleteDocFiles
+      responses:
+        '200':
+          description: Успішна відповідь
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    enum:
+                      - success
+                  title: {}
+                  message: {}
+        default:
+          description: 'Помилка або відмова: status=error з title/message; 401/403 при недійсному Token'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusEnvelope'
+      x-verified-by: живий цикл dntrade-sdk test/files-check.ts (замовлення клієнта 18, замовлення постачальнику 17, контрагент 1001)
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - id
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                  description: id файлу з docfilesGetlist
+          application/json:
+            schema:
+              type: object
+              required:
+                - id
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                  description: id файлу з docfilesGetlist
+  /docfiles/download:
+    post:
+      operationId: docfilesDownload
+      tags:
+        - docfiles
+      summary: 'Файли документа або запису: завантажити вміст'
+      description: >-
+        Повертає вміст файлу. Content-Disposition містить лише розширення (filename=".pdf"), Content-Type — application/octet-stream;
+        оригінальне ім'я файлу — DocFile.title зі списку docfilesGetlist.
+      x-verified: true
+      x-static-confidence: literal
+      x-ui-sections:
+        - banks_index
+        - calculation_index
+        - cashboxorder_avans
+        - cashboxorder_correct
+        - cashboxorder_costsout
+        - cashboxorder_fromemployee
+        - cashboxorder_in
+        - cashboxorder_instart
+        - cashboxorder_move
+        - cashboxorder_othercosts
+        - cashboxorder_otherprofit
+        - cashboxorder_out
+        - cashboxorder_paymentexchange
+        - cashboxorder_salary
+        - cashboxorder_toemployee
+        - checkboxes_index
+        - clientdisplays_index
+        - correctpartner_employees
+        - correctpartner_index
+        - costs_index
+        - costsdoc_index
+        - currency_index
+        - delivery_index
+        - integrations_index
+        - invoices_back
+        - invoices_backfromemployee
+        - invoices_backfromprovider
+        - invoices_cash
+        - invoices_cashpanel
+        - invoices_coming
+        - invoices_correct
+        - invoices_employees
+        - invoices_in
+        - invoices_inventarization
+        - invoices_move
+        - invoices_onlineorder
+        - invoices_order
+        - invoices_out
+        - invoices_production
+        - invoices_productionorder
+        - invoices_shift
+        - invoices_start
+        - invoices_unpack
+        - invoices_writeoff
+        - logs_index
+        - organizations_index
+        - partners_employees
+        - partners_index
+        - payments_correct
+        - payments_costs
+        - payments_import
+        - payments_in
+        - payments_move
+        - payments_out
+        - payments_paymentexchange
+        - payments_salary
+        - payments_start
+        - prices_index
+        - printers_index
+        - printforms_index
+        - products_correctprice
+        - products_index
+        - profitlist_index
+        - promotionals_index
+        - prrocashier_index
+        - reports_cashbox
+        - reports_cashflow
+        - reports_costs
+        - reports_employees
+        - reports_grossprofit
+        - reports_oldest
+        - reports_orders
+        - reports_partners
+        - reports_payments
+        - reports_profitandloss
+        - reports_relize
+        - reports_sell
+        - reports_storebalance
+        - reports_structuralunit
+        - reports_zreport
+        - salary_index
+        - scheduler_index
+        - schedulerauto_index
+        - stores_index
+        - structuralunit_index
+        - subdivision_index
+        - tasks_index
+        - terminals_index
+        - units_index
+        - user_index
+        - weight_index
+      x-frontend-methods:
+        - downloadDocFiles
+      x-verified-by: живий цикл dntrade-sdk test/files-check.ts (замовлення клієнта 18, замовлення постачальнику 17, контрагент 1001)
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - id
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                  description: id файлу з docfilesGetlist
+          application/json:
+            schema:
+              type: object
+              required:
+                - id
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                  description: id файлу з docfilesGetlist
+      responses:
+        '200':
+          description: Вміст файлу
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: attachment; filename=...
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        default:
+          description: Файл не знайдено або немає доступу
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusEnvelope'
+  /docfiles/getlist:
+    get:
+      operationId: docfilesGetlist
+      tags:
+        - docfiles
+      summary: 'Файли документа або запису: список'
+      description: >-
+        Список файлів, прикріплених до документа чи запису довідника. Пара doc_type + doc_id: для документів товарообліку doc_type дорівнює
+        типу документа (18 замовлення клієнта, 17 замовлення у постачальника, 3 видаткова накладна ...), довідники мають власні коди (1001
+        контрагенти, 1000 товари, 21/22 касові ордери, 41/42 платежі; див. x-doc-file-types).
+      x-verified: true
+      x-static-confidence: literal
+      x-ui-sections:
+        - banks_index
+        - calculation_index
+        - cashboxorder_avans
+        - cashboxorder_correct
+        - cashboxorder_costsout
+        - cashboxorder_fromemployee
+        - cashboxorder_in
+        - cashboxorder_instart
+        - cashboxorder_move
+        - cashboxorder_othercosts
+        - cashboxorder_otherprofit
+        - cashboxorder_out
+        - cashboxorder_paymentexchange
+        - cashboxorder_salary
+        - cashboxorder_toemployee
+        - checkboxes_index
+        - clientdisplays_index
+        - correctpartner_employees
+        - correctpartner_index
+        - costs_index
+        - costsdoc_index
+        - currency_index
+        - delivery_index
+        - integrations_index
+        - invoices_back
+        - invoices_backfromemployee
+        - invoices_backfromprovider
+        - invoices_cash
+        - invoices_cashpanel
+        - invoices_coming
+        - invoices_correct
+        - invoices_employees
+        - invoices_in
+        - invoices_inventarization
+        - invoices_move
+        - invoices_onlineorder
+        - invoices_order
+        - invoices_out
+        - invoices_production
+        - invoices_productionorder
+        - invoices_shift
+        - invoices_start
+        - invoices_unpack
+        - invoices_writeoff
+        - logs_index
+        - organizations_index
+        - partners_employees
+        - partners_index
+        - payments_correct
+        - payments_costs
+        - payments_import
+        - payments_in
+        - payments_move
+        - payments_out
+        - payments_paymentexchange
+        - payments_salary
+        - payments_start
+        - prices_index
+        - printers_index
+        - printforms_index
+        - products_correctprice
+        - products_index
+        - profitlist_index
+        - promotionals_index
+        - prrocashier_index
+        - reports_cashbox
+        - reports_cashflow
+        - reports_costs
+        - reports_employees
+        - reports_grossprofit
+        - reports_oldest
+        - reports_orders
+        - reports_partners
+        - reports_payments
+        - reports_profitandloss
+        - reports_relize
+        - reports_sell
+        - reports_storebalance
+        - reports_structuralunit
+        - reports_zreport
+        - salary_index
+        - scheduler_index
+        - schedulerauto_index
+        - stores_index
+        - structuralunit_index
+        - subdivision_index
+        - tasks_index
+        - terminals_index
+        - units_index
+        - user_index
+        - weight_index
+      x-frontend-methods:
+        - getDocFiles
+      x-verified-by: живий цикл dntrade-sdk test/files-check.ts (замовлення клієнта 18, замовлення постачальнику 17, контрагент 1001)
+      parameters:
+        - name: doc_id
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: id документа або запису
+        - name: doc_type
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: код розділу (x-doc-file-types)
+      responses:
+        '200':
+          description: Список файлів
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - success
+                      - error
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DocFile'
+        default:
+          description: Помилка
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusEnvelope'
+  /docfiles/upload:
+    post:
+      operationId: docfilesUpload
+      tags:
+        - docfiles
+      summary: 'Файли документа або запису: завантажити'
+      description: >-
+        Прикріплює один або кілька файлів (до 10 МБ кожен) до документа чи запису. Тіло multipart/form-data: files[] (повторюване поле з
+        файлами), doc_id, doc_type. Відповідь не містить id нових файлів — їх видно у docfilesGetlist.
+      x-verified: true
+      x-static-confidence: literal
+      x-ui-sections:
+        - banks_index
+        - calculation_index
+        - cashboxorder_avans
+        - cashboxorder_correct
+        - cashboxorder_costsout
+        - cashboxorder_fromemployee
+        - cashboxorder_in
+        - cashboxorder_instart
+        - cashboxorder_move
+        - cashboxorder_othercosts
+        - cashboxorder_otherprofit
+        - cashboxorder_out
+        - cashboxorder_paymentexchange
+        - cashboxorder_salary
+        - cashboxorder_toemployee
+        - checkboxes_index
+        - clientdisplays_index
+        - correctpartner_employees
+        - correctpartner_index
+        - costs_index
+        - costsdoc_index
+        - currency_index
+        - delivery_index
+        - integrations_index
+        - invoices_back
+        - invoices_backfromemployee
+        - invoices_backfromprovider
+        - invoices_cash
+        - invoices_cashpanel
+        - invoices_coming
+        - invoices_correct
+        - invoices_employees
+        - invoices_in
+        - invoices_inventarization
+        - invoices_move
+        - invoices_onlineorder
+        - invoices_order
+        - invoices_out
+        - invoices_production
+        - invoices_productionorder
+        - invoices_shift
+        - invoices_start
+        - invoices_unpack
+        - invoices_writeoff
+        - logs_index
+        - organizations_index
+        - partners_employees
+        - partners_index
+        - payments_correct
+        - payments_costs
+        - payments_import
+        - payments_in
+        - payments_move
+        - payments_out
+        - payments_paymentexchange
+        - payments_salary
+        - payments_start
+        - prices_index
+        - printers_index
+        - printforms_index
+        - products_correctprice
+        - products_index
+        - profitlist_index
+        - promotionals_index
+        - prrocashier_index
+        - reports_cashbox
+        - reports_cashflow
+        - reports_costs
+        - reports_employees
+        - reports_grossprofit
+        - reports_oldest
+        - reports_orders
+        - reports_partners
+        - reports_payments
+        - reports_profitandloss
+        - reports_relize
+        - reports_sell
+        - reports_storebalance
+        - reports_structuralunit
+        - reports_zreport
+        - salary_index
+        - scheduler_index
+        - schedulerauto_index
+        - stores_index
+        - structuralunit_index
+        - subdivision_index
+        - tasks_index
+        - terminals_index
+        - units_index
+        - user_index
+        - weight_index
+      x-frontend-methods:
+        - uploadDocFiles
+      x-verified-by: живий цикл dntrade-sdk test/files-check.ts (замовлення клієнта 18, замовлення постачальнику 17, контрагент 1001)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - files[]
+                - doc_id
+                - doc_type
+              properties:
+                files[]:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: файли, кожен до 10 МБ
+                doc_id:
+                  type: integer
+                doc_type:
+                  type: integer
+            encoding:
+              files[]:
+                contentType: application/octet-stream
+      responses:
+        '200':
+          description: Результат завантаження
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - success
+                      - error
+                  title:
+                    type: string
+                  message:
+                    type: string
+                  message_success:
+                    type: string
+                    description: повідомлення про завантажені файли
+                  message_error:
+                    type: string
+                    description: файли, які не вдалося завантажити
+        default:
+          description: Помилка
           content:
             application/json:
               schema:
@@ -56049,3 +56717,36 @@ components:
             - integer
             - string
             - 'null'
+    DocFile:
+      type: object
+      description: Файл, прикріплений до документа або запису
+      required:
+        - id
+        - title
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          description: оригінальне ім'я файлу
+        size:
+          type: string
+          description: розмір як в інтерфейсі, напр. "2.04 Кб"
+        date:
+          type: string
+          description: DD-MM-YYYY HH:mm
+        user:
+          type: string
+          description: хто завантажив
+        preview:
+          type:
+            - string
+            - 'null'
+          description: MIME для попереднього перегляду, якщо доступний
+      example:
+        id: 00000000-0000-0000-0000-000000000000
+        title: Специфікація замовлення.pdf
+        size: 2.04 Кб
+        date: 25-10-2026 20:26
+        user: Користувач Приклад

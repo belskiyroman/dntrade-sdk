@@ -29,7 +29,10 @@
     "mcp": "tsx src/mcp/server.ts",
     "smoke": "tsx test/smoke.ts",
     "mcp-check": "tsx test/mcp-check.ts",
-    "auto-login-check": "tsx test/auto-login-check.ts"
+    "auto-login-check": "tsx test/auto-login-check.ts",
+    "files-offline": "tsx test/files-offline.ts",
+    "files-check": "tsx test/files-check.ts",
+    "files-mcp-offline": "tsx test/files-mcp-offline.ts"
   },
   "engines": {
     "node": ">=20"

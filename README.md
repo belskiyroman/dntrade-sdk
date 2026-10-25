@@ -55,8 +55,47 @@ await dn.call("partnersGetdebtinfo", { body: { id: 100006 } });
 
 Ресурси фасаду `Dntrade`: `invoices` (усі типи документів, `DOCUMENT_TYPES`), `partners` (+ договори), `products`
 (+ категорії, ціни, залишки), `references` (організації, склади, типи цін, валюти, користувачі, каси, підрозділи,
-рахунки, категорії, одиниці, види витрат), `cashOrders` (21/22), `payments` (41/42), `reports` (12 звітів), `call`.
+рахунки, категорії, одиниці, види витрат), `cashOrders` (21/22), `payments` (41/42), `reports` (12 звітів),
+`files` (файли документів і записів довідників), `call`.
 Типізований клієнт openapi-fetch: `dn.client.typed.POST("/invoices/fullsearch", { body })`.
+
+## Файли документів
+
+До документів (замовлення клієнта, замовлення постачальнику, накладні, касові ордери, платежі тощо) і до записів
+довідників (контрагенти, товари, склади ...) можна прикріплювати файли до 10 МБ кожен. Файл прив'язується до пари
+`docType` + `docId`: для документів товарообліку `docType` дорівнює типу документа (18 замовлення клієнта,
+17 замовлення у постачальника, 3 видаткова накладна ...), довідники мають власні коди (1001 контрагенти, 1000 товари;
+повний перелік — `DOC_FILE_TYPES`, `npx dntrade files types`).
+
+```ts
+import { Dntrade, ORDER_TYPES } from "dntrade-sdk";
+const dn = Dntrade.load();
+
+// тип документа визначається за id автоматично
+const { uploaded } = await dn.files.uploadToDocument(orderId, [
+  "/шлях/до/рахунку.pdf",                                         // файл з диска
+  { name: "коментар.txt", data: "текст", encoding: "utf8" },       // вміст з пам'яті
+  { name: "макет.png", data: base64String, encoding: "base64" },
+]);
+const files = await dn.files.listForDocument(orderId);          // id (UUID), title, size, date, user
+const file = await dn.files.download(files[0]);                 // { fileName, contentType, size, data: Buffer }
+await dn.files.downloadTo(files[0], "./downloads/");            // зберегти на диск з оригінальним ім'ям
+await dn.files.delete(files[0].id);                             // видалити (незворотно)
+
+// явний docType: замовлення постачальнику, картка контрагента
+await dn.files.upload(ORDER_TYPES.supplier, supplierOrderId, ["./накладна.pdf"]);
+await dn.files.list(1001, partnerId);
+```
+
+Сервер віддає вміст як `application/octet-stream`, а в імені лише розширення (`.pdf`), тому передавайте в
+`download`/`downloadTo` об'єкт файлу зі списку: SDK візьме оригінальне ім'я з `title` і визначить тип за розширенням.
+Якщо передати лише id, файл буде названо `file-<id>.<розширення>`.
+
+CLI: `npx dntrade files list <docId> [--type N]`, `files upload <docId> <шлях...> [--type N]`,
+`files download <fileId> [--doc docId [--type N]] [--name ім'я] [--out шлях]`, `files delete <fileId>`, `files types`.
+
+Змінна `DNTRADE_FILES_ROOT` (необов'язково) обмежує читання і запис файлів однією текою: шляхи поза нею
+відхиляються. Рекомендовано задавати її для MCP-сервера, щоб агент не міг надіслати в DNTrade довільний локальний файл.
 
 ## MCP-сервер для агента
 
@@ -68,7 +107,8 @@ await dn.call("partnersGetdebtinfo", { body: { id: 100006 } });
       "args": ["/абсолютний/шлях/dntrade-sdk/dist/mcp/server.js"],
       "env": {
         "DNTRADE_SESSION_FILE": "/абсолютний/шлях/.dntrade-session.json",
-        "DNTRADE_ENV_FILE": "/абсолютний/шлях/.env"
+        "DNTRADE_ENV_FILE": "/абсолютний/шлях/.env",
+        "DNTRADE_FILES_ROOT": "/абсолютний/шлях/до/теки/з/файлами"
       }
     }
   }
@@ -82,9 +122,18 @@ await dn.call("partnersGetdebtinfo", { body: { id: 100006 } });
 `dntrade_update_product`, `dntrade_set_product_price`, `dntrade_product_balances`, `dntrade_delete_product`,
 `dntrade_references`, `dntrade_list_cash_orders`, `dntrade_create_cash_order`, `dntrade_delete_cash_order`,
 `dntrade_list_payments`, `dntrade_create_payment`, `dntrade_delete_payment`, `dntrade_report`,
-`dntrade_find_operations`, `dntrade_operation_example`, `dntrade_call`, `dntrade_session_status`.
+`dntrade_file_doc_types`, `dntrade_list_files`, `dntrade_upload_files`, `dntrade_download_file`, `dntrade_delete_file`,
+`dntrade_find_operations`, `dntrade_operation_example`, `dntrade_call`, `dntrade_session_status`, `dntrade_defaults`.
+
+Файли в MCP: `dntrade_upload_files` приймає для кожного файлу `path` (локальний шлях), або `name` + `contentBase64`,
+або `name` + `text`; `docType` для документів товарообліку можна не вказувати. `dntrade_download_file` зберігає файл
+у `saveTo` (типово `DNTRADE_FILES_ROOT` або тимчасова тека) і повертає шлях; з `inline: true` додатково повертає
+вміст: текст, зображення (агент його бачить) або base64, до 2 МБ. Щоб зберегти файл з оригінальним ім'ям,
+передайте в `dntrade_download_file` також `docId` (і `docType` для записів довідників).
 
 Перевірка: `npm run mcp-check` (піднімає сервер через stdio, викликає інструменти читання).
+Файли без мережі й акаунта: `npm run files-offline` (SDK) і `npm run files-mcp-offline` (MCP через stdio) на мок-сервері.
+Живий цикл файлів у одноразовому тенанті (створює і видаляє дані): `npm run files-check -- --yes`.
 Димовий тест у одноразовому тенанті (створює і видаляє тестові дані): `npm run smoke`.
 
 ## Незалежність від акаунта
@@ -103,6 +152,7 @@ SDK і MCP-сервер не прив'язані до конкретного а�
 | `DNTRADE_LOGIN`, `DNTRADE_PASSWORD` | — | автоматичний вхід |
 | `DNTRADE_SESSION_FILE` | `.dntrade-session.json` | файл сесії |
 | `DNTRADE_ENV_FILE` | `.env` поруч або вище | звідки читати `.env` |
+| `DNTRADE_FILES_ROOT` | без обмеження | тека, поза якою не можна читати/писати файли |
 | `DNTRADE_ORGANIZATION_ID` | перша організація / 1 | `organization_id` документів |
 | `DNTRADE_STORE_ID` | склад з `is_sell=1` / 1 | склад рядків документа |
 | `DNTRADE_CASHBOX_ID` | головна каса (`main=1`) / 1 | касові ордери |

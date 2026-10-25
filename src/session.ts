@@ -223,12 +223,22 @@ export interface RequestOptions {
   body?: unknown;
   /** "form" (типово: так само, як фронтенд; порожні масиви й об'єкти не передаються) або "json" (сервер приймає, але
    *  деякі операції, напр. products/create, падають на порожніх об'єктах у JSON). */
-  contentType?: "json" | "form";
+  contentType?: "json" | "form" | "multipart";
   /** Повернути сирий результат замість розібраного JSON. */
   raw?: boolean;
   timeoutMs?: number;
 }
 export interface RawResult { status: number; headers: Headers; text: string }
+export interface BinaryResult { status: number; headers: Headers; data: Buffer; contentType: string | null; fileName: string | null }
+
+/** Ім'я файлу з Content-Disposition (filename*=UTF-8''... має пріоритет). */
+export function fileNameFromDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const star = header.match(/filename\*\s*=\s*(?:UTF-8|utf-8)?''([^;]+)/);
+  if (star) { try { return decodeURIComponent(star[1].trim().replace(/^"|"$/g, "")); } catch { /* ignore */ } }
+  const plain = header.match(/filename\s*=\s*("([^"]*)"|[^;]+)/);
+  return plain ? (plain[2] ?? plain[1]).trim() : null;
+}
 
 export class DntradeSession {
   apiBase: string; token: string; tenantUrl: string; bearer: string | null; refreshToken: string | null;
@@ -325,26 +335,57 @@ export class DntradeSession {
   }
 
   /** Запит до API app1. Повертає розібраний JSON (або RawResult при raw=true). 401/403 -> один повторний SSO. */
-  async request<T = unknown>(method: string, apiPath: string, opts: RequestOptions = {}): Promise<T> {
+  /** Виконує HTTP-запит до API з Token; при недійсній сесії — одне відновлення (resso або вхід за .env) і повтор. */
+  private async send(method: string, apiPath: string, opts: RequestOptions, accept: string): Promise<{ res: Response; buf: Buffer }> {
     await this.ensure();
     let url = this.apiBase + apiPath;
     if (opts.query && Object.keys(opts.query).length) url += (url.includes("?") ? "&" : "?") + phpFormEncode(opts.query);
-    const headers: Record<string, string> = { Token: this.token, Accept: "application/json", "User-Agent": USER_AGENT };
-    let body: string | undefined;
+    const headers: Record<string, string> = { Token: this.token, Accept: accept, "User-Agent": USER_AGENT };
+    let body: string | FormData | undefined;
     if (opts.body !== undefined && method !== "GET") {
-      if ((opts.contentType ?? "form") === "json") { headers["Content-Type"] = "application/json"; body = JSON.stringify(opts.body); }
+      const ct = opts.contentType ?? "form";
+      if (ct === "multipart") {
+        if (!(opts.body instanceof FormData)) throw new DntradeError(`${method} ${apiPath}: для multipart потрібен FormData`);
+        body = opts.body; // Content-Type з boundary виставляє fetch
+      } else if (ct === "json") { headers["Content-Type"] = "application/json"; body = JSON.stringify(opts.body); }
       else { headers["Content-Type"] = "application/x-www-form-urlencoded"; body = phpFormEncode(opts.body); }
     }
     const res = await fetch(url, { method, headers, body, signal: AbortSignal.timeout(opts.timeoutMs ?? this.timeoutMs) });
-    const text = await res.text();
+    const buf = Buffer.from(await res.arrayBuffer());
     // Недійсний Token: 401/403, або 404 «Введений домен не зареєстрований» (домен тенанта зашитий у Token)
-    const authFailure = res.status === 401 || res.status === 403 || (res.status === 404 && /домен не зареєстрован/i.test(text));
-    if (authFailure && (await this.maybeResso(`HTTP ${res.status} ${method} ${apiPath}`))) return this.request<T>(method, apiPath, opts);
+    const head = res.status === 404 ? buf.subarray(0, 2000).toString("utf8") : "";
+    const authFailure = res.status === 401 || res.status === 403 || (res.status === 404 && /домен не зареєстрован/i.test(head));
+    if (authFailure && (await this.maybeResso(`HTTP ${res.status} ${method} ${apiPath}`))) return this.send(method, apiPath, opts, accept);
+    if (authFailure && !opts.raw) throw new DntradeAuthError(`HTTP ${res.status} ${method} ${apiPath}: сесія недійсна, виконайте dntrade login або задайте DNTRADE_LOGIN/DNTRADE_PASSWORD у .env`, res.status, buf.subarray(0, 300).toString("utf8"));
+    return { res, buf };
+  }
+
+  /** Запит до API app1. Повертає розібраний JSON (або RawResult при raw=true). Недійсна сесія -> одне відновлення і повтор. */
+  async request<T = unknown>(method: string, apiPath: string, opts: RequestOptions = {}): Promise<T> {
+    const { res, buf } = await this.send(method, apiPath, opts, "application/json");
+    const text = buf.toString("utf8");
     if (opts.raw) return { status: res.status, headers: res.headers, text } as unknown as T;
-    if (authFailure) throw new DntradeAuthError(`HTTP ${res.status} ${method} ${apiPath}: сесія недійсна, виконайте dntrade login або задайте DNTRADE_LOGIN/DNTRADE_PASSWORD у .env`, res.status, text.slice(0, 300));
     if (!res.ok) throw new DntradeError(`HTTP ${res.status} ${method} ${apiPath}: ${text.slice(0, 300)}`, res.status, text.slice(0, 1000));
     if (!text.trim()) return null as T; // деякі операції (products/saveprice) відповідають порожнім тілом
     try { return JSON.parse(text) as T; } catch { throw new DntradeError(`${method} ${apiPath}: відповідь не JSON (можливо, сесія закінчилась): ${text.slice(0, 200)}`, res.status, text.slice(0, 1000)); }
+  }
+
+  /** Запит, що повертає двійковий вміст (завантаження файлів). JSON-відповідь з помилкою перетворюється на DntradeError. */
+  async requestBinary(method: string, apiPath: string, opts: RequestOptions = {}): Promise<BinaryResult> {
+    const { res, buf } = await this.send(method, apiPath, opts, "*/*");
+    const contentType = res.headers.get("content-type");
+    // помилка: не-2xx, або JSON-конверт {status:"error"} без Content-Disposition (справжній файл завжди має disposition)
+    let jsonError = false;
+    if (res.ok && contentType && /application\/json/i.test(contentType) && !res.headers.get("content-disposition") && buf.length < 100_000) {
+      try { jsonError = (JSON.parse(buf.toString("utf8")) as { status?: string }).status === "error"; } catch { /* not json */ }
+    }
+    if (!res.ok || jsonError) {
+      const text = buf.subarray(0, 1000).toString("utf8");
+      let message = text.slice(0, 300);
+      try { const j = JSON.parse(text) as { title?: string; message?: string }; message = [j.title, j.message].filter(Boolean).join(": ") || message; } catch { /* not json */ }
+      throw new DntradeError(`HTTP ${res.status} ${method} ${apiPath}: ${message}`, res.status, text);
+    }
+    return { status: res.status, headers: res.headers, data: buf, contentType, fileName: fileNameFromDisposition(res.headers.get("content-disposition")) };
   }
 
   /** GET сторінки тенанта з cookie-сесією. */

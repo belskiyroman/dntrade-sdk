@@ -2336,6 +2336,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/docfiles/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Файли документа або запису: видалити
+         * @description Видаляє прикріплений файл (незворотно).
+         */
+        post: operations["docfilesDelete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/docfiles/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Файли документа або запису: завантажити вміст
+         * @description Повертає вміст файлу. Content-Disposition містить лише розширення (filename=".pdf"), Content-Type — application/octet-stream; оригінальне ім'я файлу — DocFile.title зі списку docfilesGetlist.
+         */
+        post: operations["docfilesDownload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/docfiles/getlist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Файли документа або запису: список
+         * @description Список файлів, прикріплених до документа чи запису довідника. Пара doc_type + doc_id: для документів товарообліку doc_type дорівнює типу документа (18 замовлення клієнта, 17 замовлення у постачальника, 3 видаткова накладна ...), довідники мають власні коди (1001 контрагенти, 1000 товари, 21/22 касові ордери, 41/42 платежі; див. x-doc-file-types).
+         */
+        get: operations["docfilesGetlist"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/docfiles/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Файли документа або запису: завантажити
+         * @description Прикріплює один або кілька файлів (до 10 МБ кожен) до документа чи запису. Тіло multipart/form-data: files[] (повторюване поле з файлами), doc_id, doc_type. Відповідь не містить id нових файлів — їх видно у docfilesGetlist.
+         */
+        post: operations["docfilesUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/invoices/askpaid": {
         parameters: {
             query?: never;
@@ -7559,6 +7639,30 @@ export interface components {
             title?: string;
             message?: string;
             id?: number | string | null;
+        };
+        /**
+         * @description Файл, прикріплений до документа або запису
+         * @example {
+         *       "id": "00000000-0000-0000-0000-000000000000",
+         *       "title": "Специфікація замовлення.pdf",
+         *       "size": "2.04 Кб",
+         *       "date": "25-10-2026 20:26",
+         *       "user": "Користувач Приклад"
+         *     }
+         */
+        DocFile: {
+            /** Format: uuid */
+            id: string;
+            /** @description оригінальне ім'я файлу */
+            title: string;
+            /** @description розмір як в інтерфейсі, напр. "2.04 Кб" */
+            size?: string;
+            /** @description DD-MM-YYYY HH:mm */
+            date?: string;
+            /** @description хто завантажив */
+            user?: string;
+            /** @description MIME для попереднього перегляду, якщо доступний */
+            preview?: string | null;
         };
     };
     responses: never;
@@ -16930,6 +17034,190 @@ export interface operations {
                 };
             };
             /** @description Помилка або відмова: status=error з title/message; 401/403 при недійсному Token */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusEnvelope"];
+                };
+            };
+        };
+    };
+    docfilesDelete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": {
+                    /**
+                     * Format: uuid
+                     * @description id файлу з docfilesGetlist
+                     */
+                    id: string;
+                };
+                "application/json": {
+                    /**
+                     * Format: uuid
+                     * @description id файлу з docfilesGetlist
+                     */
+                    id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Успішна відповідь */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {unknown} */
+                        status?: "success";
+                        title?: unknown;
+                        message?: unknown;
+                    };
+                };
+            };
+            /** @description Помилка або відмова: status=error з title/message; 401/403 при недійсному Token */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusEnvelope"];
+                };
+            };
+        };
+    };
+    docfilesDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": {
+                    /**
+                     * Format: uuid
+                     * @description id файлу з docfilesGetlist
+                     */
+                    id: string;
+                };
+                "application/json": {
+                    /**
+                     * Format: uuid
+                     * @description id файлу з docfilesGetlist
+                     */
+                    id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Вміст файлу */
+            200: {
+                headers: {
+                    /** @description attachment; filename=... */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Файл не знайдено або немає доступу */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusEnvelope"];
+                };
+            };
+        };
+    };
+    docfilesGetlist: {
+        parameters: {
+            query: {
+                /** @description id документа або запису */
+                doc_id: number;
+                /** @description код розділу (x-doc-file-types) */
+                doc_type: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Список файлів */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status?: "success" | "error";
+                        data?: components["schemas"]["DocFile"][];
+                    };
+                };
+            };
+            /** @description Помилка */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusEnvelope"];
+                };
+            };
+        };
+    };
+    docfilesUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** @description файли, кожен до 10 МБ */
+                    "files[]": string[];
+                    doc_id: number;
+                    doc_type: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Результат завантаження */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status?: "success" | "error";
+                        title?: string;
+                        message?: string;
+                        /** @description повідомлення про завантажені файли */
+                        message_success?: string;
+                        /** @description файли, які не вдалося завантажити */
+                        message_error?: string;
+                    };
+                };
+            };
+            /** @description Помилка */
             default: {
                 headers: {
                     [name: string]: unknown;

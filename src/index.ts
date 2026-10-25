@@ -16,6 +16,7 @@ export * from "./resources/products.js";
 export * from "./resources/references.js";
 export * from "./resources/finance.js";
 export * from "./resources/reports.js";
+export * from "./resources/files.js";
 export * from "./config.js";
 
 import { DntradeClient, type CallOptions } from "./client.js";
@@ -26,6 +27,7 @@ import { Products } from "./resources/products.js";
 import { References } from "./resources/references.js";
 import { CashOrders, Payments } from "./resources/finance.js";
 import { Reports } from "./resources/reports.js";
+import { DocFiles } from "./resources/files.js";
 import { configFromEnv, envDefinedKeys, type DntradeConfig } from "./config.js";
 
 /** Фасад: усі ресурси + універсальний виклик. */
@@ -41,6 +43,8 @@ export class Dntrade {
   readonly cashOrders: CashOrders;
   readonly payments: Payments;
   readonly reports: Reports;
+  /** Файли документів і записів довідників (/docfiles/*): list, upload, download, downloadTo, delete, uploadToDocument. */
+  readonly files: DocFiles;
 
   constructor(session: DntradeSession, config: Partial<DntradeConfig> = {}) {
     this.config = configFromEnv(config);
@@ -53,6 +57,7 @@ export class Dntrade {
     this.cashOrders = new CashOrders(this.client, cfg);
     this.payments = new Payments(this.client, cfg);
     this.reports = new Reports(this.client);
+    this.files = new DocFiles(this.client);
   }
   static load(file: string = resolveSessionFile(), opts: { relogin?: boolean; config?: Partial<DntradeConfig> } = {}): Dntrade {
     return new Dntrade(DntradeSession.load(file, { relogin: opts.relogin }), opts.config);

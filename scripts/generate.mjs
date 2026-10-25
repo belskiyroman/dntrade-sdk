@@ -39,6 +39,8 @@ for (const [p, methods] of Object.entries(spec.paths)) {
   }
 }
 fs.writeFileSync(path.join(OUT, "operations.json"), JSON.stringify(ops, null, 1));
+// коди doc_type для файлів (info.x-doc-file-types)
+fs.writeFileSync(path.join(OUT, "doc-file-types.json"), JSON.stringify(spec.info?.["x-doc-file-types"] || {}, null, 1));
 
 // 3) форми Invoices за типами документів: з прикладів (x-verified) у спеці береться структура першого прикладу;
 //    статичні дефолти по розділах лежать у ../openapi/work/static (якщо є) — беремо звідти type-специфічні значення.
